@@ -36,7 +36,6 @@ const extractRemotePayload = (data) => ({
   version: data.version,
   cats: data.cats,
   currentCatIndex: data.currentCatIndex,
-  appBrandingName: data.appBrandingName,
   behaviorSocialLogs: data.behaviorSocialLogs,
   behaviorSocialCustomTags: data.behaviorSocialCustomTags,
   behaviorSocialHiddenTags: data.behaviorSocialHiddenTags,

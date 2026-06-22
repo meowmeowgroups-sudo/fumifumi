@@ -72,14 +72,10 @@
         <div class="absolute -right-10 -top-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
         <div class="absolute -right-8 -bottom-10 w-28 h-28 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
 
-        <button type="button" @click="openHeaderSettingsAction('branding')"
-                class="relative z-10 w-full flex items-center gap-1.5 min-w-0 text-left group rounded-lg px-0.5 py-0.5 hover:bg-white/15 transition-colors"
-                title="編輯自訂管家名稱">
-          <span class="text-[10px] shrink-0 opacity-90">👑</span>
-          <span class="text-[11px] font-black text-white truncate drop-shadow-sm">
-            {{ appBrandingName || "Sonia' meow group" }}
-          </span>
-        </button>
+        <div class="relative z-10 w-full min-w-0 px-0.5 py-0.5">
+          <p class="app-header-brand">{{ APP_BRAND_NAME }}</p>
+          <p class="app-header-tagline">{{ APP_BRAND_TAGLINE }}</p>
+        </div>
 
         <div class="relative z-10 flex items-center gap-2 border-t border-white/20 pt-2.5">
           <div class="flex-1 flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none min-w-0">
@@ -2954,11 +2950,6 @@
         <p v-if="editFormError" class="text-[10px] font-bold text-rose-600 bg-rose-50 border theme-accent-border rounded-xl px-3 py-2 text-left">{{ editFormError }}</p>
 
         <div class="space-y-3 text-left">
-          <div class="bg-slate-50 p-3 rounded-2xl border theme-accent-border">
-            <label class="text-[10px] font-black theme-accent-text opacity-80 block mb-1">👑 自訂管家名稱</label>
-            <input v-model="editBrandingName" type="text" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold text-xs" />
-          </div>
-
           <div class="bg-slate-50 p-3 rounded-2xl border border-slate-200 flex items-center justify-between gap-3">
             <div class="min-w-0">
               <p class="text-[10px] font-black text-slate-500">帳戶</p>
@@ -3341,6 +3332,7 @@ import {
   markCareSyncLocalAuthoritative,
 } from './careSync'
 import { handleImageUpload, UPLOAD_LIMITS, setImageUploadUserId } from './imageUpload'
+import { APP_BRAND_NAME, APP_BRAND_TAGLINE } from './branding'
 
 const authUser = ref(null)
 const authReady = ref(false)
@@ -4959,8 +4951,6 @@ const getAppLocalStorageKeys = () => [
   'meow_cats_list_v29',
   'meow_currentCatIndex_v30',
   'meow_currentCatIndex_v29',
-  'meow_app_branding_name_v30',
-  'meow_app_branding_name_v29',
   'meow_behavior_social_logs_v1',
   'meow_behavior_social_custom_tags_v1',
   'meow_behavior_social_hidden_tags_v1',
@@ -6007,8 +5997,6 @@ const addWaterIncrement = (forDate = null, delta = 20) => {
   persistCats()
 }
 
-const appBrandingName = ref("Sonia' meow group")
-const editBrandingName = ref('')
 const showHeaderSettingsMenu = ref(false)
 const showRemindersModal = ref(false)
 const showBookingModal = ref(false)
@@ -8289,13 +8277,12 @@ const initializeNewCat = (cat) => {
   return cat
 }
 
-const resetGlobalRecordsLocal = ({ keepBranding = true, clearCats = false } = {}) => {
+const resetGlobalRecordsLocal = ({ clearCats = false } = {}) => {
   if (clearCats) {
     cats.value = []
     currentCatIndex.value = 0
     currentTab.value = 'home'
   }
-  if (!keepBranding) appBrandingName.value = "Sonia' meow group"
   behaviorSocialLogs.value = []
   behaviorSocialCustomTags.value = normalizeBehaviorSocialCustomTags(null)
   behaviorSocialHiddenTags.value = normalizeBehaviorSocialHiddenTags(null)
@@ -8323,10 +8310,10 @@ const persistFreshStartToRemote = async () => {
   markCareSyncLocalAuthoritative()
 }
 
-const prepareFreshTrialSession = async ({ keepBranding = true, clearCats = false } = {}) => {
+const prepareFreshTrialSession = async ({ clearCats = false } = {}) => {
   pauseAllRemoteSync()
   try {
-    resetGlobalRecordsLocal({ keepBranding, clearCats })
+    resetGlobalRecordsLocal({ clearCats })
     await persistFreshStartToRemote()
   } finally {
     resumeAllRemoteSync()
@@ -9304,8 +9291,8 @@ const resetSessionUiState = ({ keepTab = false } = {}) => {
   closeTransientModals()
 }
 
-const resetAppSessionState = ({ keepBranding = false } = {}) => {
-  resetGlobalRecordsLocal({ keepBranding, clearCats: true })
+const resetAppSessionState = () => {
+  resetGlobalRecordsLocal({ clearCats: true })
 }
 
 const purgeOrphanedRemoteData = () => {
@@ -9367,7 +9354,7 @@ const purgeOrphanedRemoteData = () => {
   return changed
 }
 
-const initializeUser = ({ reason = 'boot', keepBranding = true } = {}) => {
+const initializeUser = ({ reason = 'boot' } = {}) => {
   const interactionLocked = isAppModalOpen.value
 
   if (!cats.value.length) {
@@ -9375,7 +9362,7 @@ const initializeUser = ({ reason = 'boot', keepBranding = true } = {}) => {
       return { mode: 'empty-locked', reason }
     }
     clearAllLocalCache()
-    void prepareFreshTrialSession({ keepBranding, clearCats: true })
+    void prepareFreshTrialSession({ clearCats: true })
     return { mode: 'empty', reason }
   }
 
@@ -9413,7 +9400,6 @@ const getAppSyncPayload = () => ({
   version: 30,
   cats: cats.value.map(({ inventoryItems: _inv, ...cat }) => JSON.parse(JSON.stringify(cat))),
   currentCatIndex: currentCatIndex.value,
-  appBrandingName: appBrandingName.value,
   behaviorSocialLogs: JSON.parse(JSON.stringify(behaviorSocialLogs.value)),
   behaviorSocialCustomTags: JSON.parse(JSON.stringify(behaviorSocialCustomTags.value)),
   behaviorSocialHiddenTags: JSON.parse(JSON.stringify(behaviorSocialHiddenTags.value)),
@@ -9447,7 +9433,6 @@ const restoreActiveView = ({ catId, catIndex, tab }) => {
 const mirrorSyncStateToLocalStorage = () => {
   setStorage('meow_cats_list_v30', cats.value.map(({ inventoryItems: _inv, ...cat }) => cat))
   setStorage('meow_currentCatIndex_v30', currentCatIndex.value)
-  setStorage('meow_app_branding_name_v30', appBrandingName.value)
   setStorage(BEHAVIOR_SOCIAL_STORAGE_KEY, behaviorSocialLogs.value)
   setStorage(BEHAVIOR_SOCIAL_CUSTOM_TAGS_KEY, behaviorSocialCustomTags.value)
   setStorage(BEHAVIOR_SOCIAL_HIDDEN_TAGS_KEY, behaviorSocialHiddenTags.value)
@@ -9463,9 +9448,6 @@ const applyAppSyncPayload = (data, { preserveView = false } = {}) => {
     const nextCats = JSON.parse(JSON.stringify(data.cats))
     nextCats.forEach(cat => normalizeCat(cat))
     cats.value = nextCats
-  }
-  if (typeof data.appBrandingName === 'string' && data.appBrandingName.trim()) {
-    appBrandingName.value = data.appBrandingName.trim()
   }
   if (Array.isArray(data.behaviorSocialLogs)) {
     behaviorSocialLogs.value = data.behaviorSocialLogs.map(normalizeBehaviorSocialLog)
@@ -9487,7 +9469,7 @@ const applyAppSyncPayload = (data, { preserveView = false } = {}) => {
     syncActiveMedicalIdForDay()
   }
   mirrorSyncStateToLocalStorage()
-  initializeUser({ reason: 'remote-sync', keepBranding: true })
+  initializeUser({ reason: 'remote-sync' })
 }
 
 const persistCats = () => {
@@ -9517,11 +9499,6 @@ const reloadAllLocalStorageData = ({ preserveView = false } = {}) => {
         }
       }
     }
-  }
-
-  const branding = getStorage('meow_app_branding_name_v30', getStorage('meow_app_branding_name_v29', null))
-  if (typeof branding === 'string' && branding.trim()) {
-    appBrandingName.value = branding.trim()
   }
 
   const logs = getStorage(BEHAVIOR_SOCIAL_STORAGE_KEY, null)
@@ -9590,7 +9567,7 @@ const fetchLatestData = async ({ preserveView = false } = {}) => {
     behaviorSocialDraft.value = createBehaviorSocialDraft()
     syncBehaviorSocialDraftCats()
   }
-  initializeUser({ reason: preserveView ? 'preserve-view' : 'fetch', keepBranding: true })
+  initializeUser({ reason: preserveView ? 'preserve-view' : 'fetch' })
   if (purged) await persistAllRemoteState()
 }
 
@@ -9694,7 +9671,7 @@ const stopUserSession = async () => {
   }
   stopAppSyncPoll()
   teardownAppSession()
-  resetGlobalRecordsLocal({ keepBranding: false, clearCats: true })
+  resetGlobalRecordsLocal({ clearCats: true })
   inventoryHasAppliedServerSnapshot = false
   activeSessionUid = null
   storageUserPrefix = ''
@@ -9720,7 +9697,7 @@ const startUserSession = async (uid) => {
   if (!cats.value.length) {
     reloadAllLocalStorageData({ preserveView: false })
   }
-  initializeUser({ reason: 'boot', keepBranding: true })
+  initializeUser({ reason: 'boot' })
   pauseAppSyncPush(false)
   pauseCareSyncPush(false)
 
@@ -10086,10 +10063,6 @@ const activeMealTimePart = computed({
   }
 })
 
-watch(appBrandingName, () => {
-  scheduleAppSyncPush()
-  scheduleMirrorToLocalStorage()
-})
 watch(cats, () => {
   scheduleAppSyncPush()
   scheduleMirrorToLocalStorage()
@@ -10310,14 +10283,8 @@ const switchCat = (index) => {
   closeHeaderSettingsMenu()
   currentCatIndex.value = index
   currentTab.value = 'home'
-  initializeUser({ reason: 'switch-cat', keepBranding: true })
+  initializeUser({ reason: 'switch-cat' })
   setStorage('meow_currentCatIndex_v30', currentCatIndex.value)
-}
-
-const openHeaderSettingsAction = (action) => {
-  closeHeaderSettingsMenu()
-  if (action === 'branding') openEditProfile()
-  else if (action === 'addCat') openAddCatModal()
 }
 
 const addWater = (forDate = null) => {
@@ -10475,7 +10442,6 @@ const openEditProfile = () => {
   if (!currentCat.value) return
   const cat = currentCat.value
   editFormError.value = ''
-  editBrandingName.value = appBrandingName.value
   editPhoto.value = cat.photo || ''
   editName.value = cat.name || ''
   editBreed.value = cat.breed || ''
@@ -10508,7 +10474,6 @@ const saveProfile = () => {
     editFormError.value = '請填寫有效體重 (kg)'
     return
   }
-  appBrandingName.value = editBrandingName.value.trim()
   currentCat.value.name = name
   currentCat.value.photo = editPhoto.value || ''
   currentCat.value.breed = editBreed.value.trim()
@@ -10542,7 +10507,7 @@ const deleteCat = async () => {
 
     if (!cats.value.length) {
       clearAllLocalCache()
-      resetGlobalRecordsLocal({ keepBranding: true, clearCats: true })
+      resetGlobalRecordsLocal({ clearCats: true })
       await persistFreshStartToRemote()
     } else {
       purgeOrphanedRemoteData()
@@ -10588,7 +10553,7 @@ const addNewCat = async () => {
     currentCatIndex.value = cats.value.length - 1
 
     if (cats.value.length === 1) {
-      resetGlobalRecordsLocal({ keepBranding: true, clearCats: false })
+      resetGlobalRecordsLocal({ clearCats: false })
       await persistFreshStartToRemote()
     }
 
@@ -10603,6 +10568,27 @@ const addNewCat = async () => {
 </script>
 
 <style>
+@import url('https://fonts.cdnfonts.com/css/garet');
+
+.app-header-brand {
+  font-family: 'Garet', sans-serif;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #fff;
+  margin: 0;
+  line-height: 1.2;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.app-header-tagline {
+  margin: 0.3rem 0 0;
+  font-size: 0.5625rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.9);
+}
+
 /* 貓貓主題色：由 themePageStyle 注入 CSS 變數 */
 .theme-section {
   background-color: #fff;
