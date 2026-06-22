@@ -3292,6 +3292,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import splashVideoSrc from './assets/Brown One Line Pet Sitting Logo 2.mp4'
 import AuthScreen from './components/AuthScreen.vue'
+import { checkForAppUpdate } from './appUpdate'
 import { watchAuthState, signOutUser } from './auth'
 import { db } from './firebase'
 import {
@@ -9763,6 +9764,7 @@ onMounted(() => {
   watchAuthState(async (user) => {
     authUser.value = user
     authReady.value = true
+    void checkForAppUpdate()
     if (user) {
       await startUserSession(user.uid)
     } else {
