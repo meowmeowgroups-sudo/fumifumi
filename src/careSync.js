@@ -1,7 +1,8 @@
 import { db } from './firebase'
 import { doc, setDoc, getDocFromServer, onSnapshot, serverTimestamp } from 'firebase/firestore'
 
-const CARE_DOC = doc(db, 'appData', 'careMaintenance')
+let currentUserId = null
+let careDocRef = null
 
 let getState = null
 let onRemoteHandler = null
@@ -18,6 +19,11 @@ let pushPaused = false
 let remoteApplyPaused = false
 let localAuthoritativeUntil = 0
 let hasAppliedServerSnapshot = false
+
+const getCareDoc = () => {
+  if (!careDocRef) throw new Error('Care sync not initialized for user')
+  return careDocRef
+}
 
 const stateJson = (state) => {
   try {
@@ -94,6 +100,14 @@ const applyRemoteCareSnapshot = (remoteState, updatedAtMs) => {
   }
 }
 
+export const initCareSyncForUser = (userId) => {
+  if (!userId) throw new Error('userId required')
+  if (currentUserId === userId && careDocRef) return
+  destroyCareSync()
+  currentUserId = userId
+  careDocRef = doc(db, 'users', userId, 'app', 'careMaintenance')
+}
+
 export const registerCareSync = ({ getState: getter, onRemote, onError, onStatus } = {}) => {
   getState = getter
   onRemoteHandler = onRemote
@@ -112,13 +126,13 @@ export const pauseCareRemoteApply = (paused) => {
 
 export const pushCareSync = async ({ force = false } = {}) => {
   if (!force && pushPaused) return
-  if (!getState) return
+  if (!getState || !careDocRef) return
   const state = cloneCareState(getState())
   if (!state) return
   const fp = stateJson(state)
   if (!force && fp === lastPushedStateJson) return
   try {
-    await setDoc(CARE_DOC, {
+    await setDoc(getCareDoc(), {
       state,
       updatedAt: serverTimestamp(),
     })
@@ -145,9 +159,9 @@ export const markCareSyncLocalAuthoritative = (ms = 4000) => {
 }
 
 export const pullCareSyncFromServer = async (force = false) => {
-  if (!onRemoteHandler) return { ok: false, reason: 'not-registered' }
+  if (!onRemoteHandler || !careDocRef) return { ok: false, reason: 'not-registered' }
   try {
-    const snapshot = await getDocFromServer(CARE_DOC)
+    const snapshot = await getDocFromServer(getCareDoc())
     lastPullAtMs = Date.now()
     if (!snapshot.exists()) {
       reportStatus({ serverExists: false })
@@ -179,7 +193,8 @@ export const diagnoseCareSync = async () => {
   let server = null
   let serverError = ''
   try {
-    const snap = await getDocFromServer(CARE_DOC)
+    if (!careDocRef) throw new Error('Care sync not initialized')
+    const snap = await getDocFromServer(getCareDoc())
     server = snap.exists() ? snap.data() : null
   } catch (err) {
     serverError = err?.message || String(err)
@@ -189,7 +204,7 @@ export const diagnoseCareSync = async () => {
   return {
     listenerActive: !!unsubscribe,
     projectId: 'fumifumi-8988',
-    docPath: 'appData/careMaintenance',
+    docPath: currentUserId ? `users/${currentUserId}/app/careMaintenance` : null,
     localCompletions: Object.keys(local?.completions || {}).length,
     serverExists: !!server,
     serverCompletions: Object.keys(server?.state?.completions || {}).length,
@@ -204,12 +219,12 @@ export const diagnoseCareSync = async () => {
 }
 
 const migrateLegacyCareToCloud = async (legacyState) => {
-  if (migrationAttempted || !hasMeaningfulCareState(legacyState)) return
+  if (migrationAttempted || !hasMeaningfulCareState(legacyState) || !careDocRef) return
   migrationAttempted = true
   try {
     const state = cloneCareState(legacyState)
     lastPushedStateJson = stateJson(state)
-    await setDoc(CARE_DOC, {
+    await setDoc(getCareDoc(), {
       state,
       updatedAt: serverTimestamp(),
     })
@@ -225,9 +240,9 @@ const migrateLegacyCareToCloud = async (legacyState) => {
 }
 
 export const subscribeCareSync = (legacyState = null) => {
-  if (unsubscribe) return
+  if (unsubscribe || !careDocRef) return
   unsubscribe = onSnapshot(
-    CARE_DOC,
+    getCareDoc(),
     (snapshot) => {
       if (snapshot.metadata.fromCache && hasAppliedServerSnapshot) return
 
@@ -264,6 +279,9 @@ export const destroyCareSync = () => {
   hasAppliedServerSnapshot = false
   lastAppliedUpdatedAtMs = 0
   lastPushedStateJson = ''
+  migrationAttempted = false
+  currentUserId = null
+  careDocRef = null
   reportStatus({ listenerActive: false })
 }
 

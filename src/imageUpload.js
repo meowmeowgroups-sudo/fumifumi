@@ -8,7 +8,19 @@ export const UPLOAD_LIMITS = {
   excretion: 10,
 }
 
-const COUNTS_DOC = doc(db, 'appData', 'dailyUploadCounts')
+let currentUserId = null
+let countsDocRef = null
+
+export const setImageUploadUserId = (userId) => {
+  currentUserId = userId || null
+  countsDocRef = userId ? doc(db, 'users', userId, 'app', 'dailyUploadCounts') : null
+}
+
+const getCountsDoc = () => {
+  if (!countsDocRef) throw new Error('Image upload not initialized for user')
+  return countsDocRef
+}
+
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg']
 
 const buildCountKey = (catId, type, dateKey) => `${catId}::${dateKey}::${type}`
@@ -20,8 +32,8 @@ export const getUploadLimitMessage = (type) => {
 }
 
 export const getUploadCount = async (catId, type, dateKey) => {
-  if (!catId || !type || !dateKey) return 0
-  const snap = await getDoc(COUNTS_DOC)
+  if (!catId || !type || !dateKey || !countsDocRef) return 0
+  const snap = await getDoc(getCountsDoc())
   const counts = snap.exists() ? (snap.data().counts || {}) : {}
   return Number(counts[buildCountKey(catId, type, dateKey)] || 0)
 }
@@ -31,6 +43,9 @@ export const checkUploadQuota = async (catId, type, dateKey) => {
   const limit = UPLOAD_LIMITS[type]
   if (!limit) {
     return { ok: false, count: 0, limit: 0, remaining: 0, message: '未知的上傳類型' }
+  }
+  if (!countsDocRef) {
+    return { ok: false, count: 0, limit, remaining: 0, message: '請先登入' }
   }
   const count = await getUploadCount(catId, type, dateKey)
   const remaining = Math.max(0, limit - count)
@@ -49,10 +64,10 @@ export const checkUploadQuota = async (catId, type, dateKey) => {
 const incrementUploadCount = async (catId, type, dateKey) => {
   const key = buildCountKey(catId, type, dateKey)
   await runTransaction(db, async (tx) => {
-    const snap = await tx.get(COUNTS_DOC)
+    const snap = await tx.get(getCountsDoc())
     const counts = { ...(snap.exists() ? snap.data().counts : {}) }
     counts[key] = Number(counts[key] || 0) + 1
-    tx.set(COUNTS_DOC, { counts, updatedAt: serverTimestamp() }, { merge: true })
+    tx.set(getCountsDoc(), { counts, updatedAt: serverTimestamp() }, { merge: true })
   })
 }
 
@@ -74,8 +89,9 @@ const validateImageFile = (file) => {
 }
 
 const uploadToStorage = async (file, catId, type) => {
+  if (!currentUserId) throw new Error('請先登入')
   const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.webp`
-  const path = `cats/${catId}/${type}/${safeName}`
+  const path = `users/${currentUserId}/cats/${catId}/${type}/${safeName}`
   const fileRef = storageRef(storage, path)
   await uploadBytes(fileRef, file, { contentType: 'image/webp' })
   return getDownloadURL(fileRef)
@@ -87,6 +103,7 @@ const uploadToStorage = async (file, catId, type) => {
  */
 export const handleImageUpload = async ({ file, type, catId, dateKey }) => {
   validateImageFile(file)
+  if (!currentUserId) throw new Error('請先登入')
   if (!catId) throw new Error('請先選擇或建立貓咪檔案')
   if (!type || !UPLOAD_LIMITS[type]) throw new Error('未知的上傳類型')
   if (!dateKey) throw new Error('缺少日期')

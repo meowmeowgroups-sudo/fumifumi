@@ -1,4 +1,9 @@
 <template>
+  <div v-if="!authReady" class="fixed inset-0 z-[1000] bg-[#f5f5f3] flex items-center justify-center">
+    <p class="text-sm font-bold text-slate-500">載入中…</p>
+  </div>
+  <AuthScreen v-else-if="!authUser" />
+  <template v-else>
   <Transition name="fade-splash">
     <div v-if="showSplash"
          class="fixed inset-0 z-[999] bg-[#f5f5f3] flex flex-col items-center justify-center select-none px-6"
@@ -2954,6 +2959,17 @@
             <input v-model="editBrandingName" type="text" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold text-xs" />
           </div>
 
+          <div class="bg-slate-50 p-3 rounded-2xl border border-slate-200 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <p class="text-[10px] font-black text-slate-500">帳戶</p>
+              <p class="text-[11px] font-bold text-slate-700 truncate mt-0.5">{{ authEmail }}</p>
+            </div>
+            <button type="button" @click="handleLogout"
+                    class="shrink-0 text-[10px] font-black text-rose-600 bg-rose-50 px-3 py-1.5 rounded-xl">
+              登出
+            </button>
+          </div>
+
           <div class="bg-slate-50 p-3 rounded-2xl border theme-accent-border flex items-center gap-3">
             <input ref="editPhotoInput" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" class="hidden" @change="onEditPhotoSelect" />
             <div class="w-14 h-14 rounded-full border-[3px] theme-accent-border theme-accent-bg overflow-hidden shadow-md flex items-center justify-center shrink-0">
@@ -3278,11 +3294,14 @@
     </Teleport>
 
   </div>
+  </template>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import splashVideoSrc from './assets/Brown One Line Pet Sitting Logo 2.mp4'
+import AuthScreen from './components/AuthScreen.vue'
+import { watchAuthState, signOutUser } from './auth'
 import { db } from './firebase'
 import {
   collection,
@@ -3302,6 +3321,7 @@ import {
   pullAppSyncFromServer,
   subscribeToAppSync,
   destroyAppSync,
+  initAppSyncForUser,
   pauseAppSyncPush,
   pauseRemoteApply,
   resetAppSyncPushFingerprint,
@@ -3314,12 +3334,20 @@ import {
   getCareSyncStatus,
   subscribeCareSync,
   destroyCareSync,
+  initCareSyncForUser,
   pauseCareSyncPush,
   pauseCareRemoteApply,
   resetCareSyncPushFingerprint,
   markCareSyncLocalAuthoritative,
 } from './careSync'
-import { handleImageUpload, UPLOAD_LIMITS } from './imageUpload'
+import { handleImageUpload, UPLOAD_LIMITS, setImageUploadUserId } from './imageUpload'
+
+const authUser = ref(null)
+const authReady = ref(false)
+let activeSessionUid = null
+let storageUserPrefix = ''
+
+const authEmail = computed(() => authUser.value?.email || '')
 
 const showSplash = ref(true)
 const splashVideo = ref(null)
@@ -4910,15 +4938,17 @@ const safeUUID = () => {
   return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+const scopedStorageKey = (key) => (storageUserPrefix ? `${storageUserPrefix}${key}` : key)
+
 const getStorage = (key, defaultValue) => {
-  const saved = localStorage.getItem(key)
+  const saved = localStorage.getItem(scopedStorageKey(key))
   if (saved !== null) { try { return JSON.parse(saved) } catch { return saved } }
   return defaultValue
 }
 
 const setStorage = (key, value) => {
   try {
-    localStorage.setItem(key, JSON.stringify(value))
+    localStorage.setItem(scopedStorageKey(key), JSON.stringify(value))
   } catch (err) {
     console.warn('localStorage write failed:', key, err)
   }
@@ -4940,7 +4970,7 @@ const getAppLocalStorageKeys = () => [
 
 const clearAllLocalCache = () => {
   getAppLocalStorageKeys().forEach((key) => {
-    try { localStorage.removeItem(key) } catch {}
+    try { localStorage.removeItem(scopedStorageKey(key)) } catch {}
   })
 }
 
@@ -7850,15 +7880,28 @@ const activeCareMedChartPlans = computed(() => {
   return getMedicationChartPlans(currentCat.value.careMedSchedule)
 })
 
-const INVENTORY_COLLECTION = 'inventory'
 const inventoryItems = ref([])
 let unsubscribeInventory = null
 let inventoryMigrationAttempted = false
 
+const getInventoryCollection = () => {
+  const uid = authUser.value?.uid
+  if (!uid) return null
+  return collection(db, 'users', uid, 'inventory')
+}
+
+const getInventoryDocRef = (itemId) => {
+  const uid = authUser.value?.uid
+  if (!uid || !itemId) return null
+  return doc(db, 'users', uid, 'inventory', itemId)
+}
+
 const updateInventoryDoc = async (item, patch) => {
   if (!item?.id) return
+  const docRef = getInventoryDocRef(item.id)
+  if (!docRef) return
   try {
-    await updateDoc(doc(db, INVENTORY_COLLECTION, item.id), {
+    await updateDoc(docRef, {
       ...patch,
       updatedAt: serverTimestamp(),
     })
@@ -8039,9 +8082,10 @@ const ensureCareData = (cat) => {
 
 const addInventoryItem = async () => {
   const catId = currentCat.value?.id
-  if (!catId) return
+  const col = getInventoryCollection()
+  if (!catId || !col) return
   try {
-    await addDoc(collection(db, INVENTORY_COLLECTION), {
+    await addDoc(col, {
       catId,
       name: '',
       current: '0',
@@ -8072,8 +8116,10 @@ const removeMedHistoryCustomField = (id) => {
 
 const removeInventoryItem = async (id) => {
   if (!id) return
+  const docRef = getInventoryDocRef(id)
+  if (!docRef) return
   try {
-    await deleteDoc(doc(db, INVENTORY_COLLECTION, id))
+    await deleteDoc(docRef)
   } catch (err) {
     console.error(err)
     alert('刪除品項失敗，請檢查 Firebase 設定')
@@ -8085,7 +8131,10 @@ const clearRemoteInventoryItems = async () => {
   inventoryItems.value = []
   if (!ids.length) return
   await Promise.allSettled(
-    ids.map(id => deleteDoc(doc(db, INVENTORY_COLLECTION, id)))
+    ids.map(id => {
+      const docRef = getInventoryDocRef(id)
+      return docRef ? deleteDoc(docRef) : Promise.resolve()
+    })
   )
 }
 
@@ -8098,7 +8147,10 @@ const deleteRemoteInventoryByCatId = async (catId) => {
   inventoryItems.value = inventoryItems.value.filter(item => item?.catId !== catId)
   if (!ids.length) return
   await Promise.allSettled(
-    ids.map(id => deleteDoc(doc(db, INVENTORY_COLLECTION, id)))
+    ids.map(id => {
+      const docRef = getInventoryDocRef(id)
+      return docRef ? deleteDoc(docRef) : Promise.resolve()
+    })
   )
 }
 
@@ -9504,7 +9556,9 @@ const reloadAllLocalStorageData = ({ preserveView = false } = {}) => {
 }
 
 const pullInventoryFromServer = async () => {
-  const snapshot = await getDocsFromServer(collection(db, INVENTORY_COLLECTION))
+  const col = getInventoryCollection()
+  if (!col) return
+  const snapshot = await getDocsFromServer(col)
   inventoryHasAppliedServerSnapshot = true
   inventoryItems.value = snapshot.docs.map(docSnap => ({
     id: docSnap.id,
@@ -9513,7 +9567,7 @@ const pullInventoryFromServer = async () => {
 }
 
 const fetchLatestData = async ({ preserveView = false } = {}) => {
-  if (isRemoteApplyLocked()) return
+  if (isRemoteApplyLocked() || !activeSessionUid) return
   const viewSnapshot = preserveView
     ? { catId: currentCat.value?.id ?? null, catIndex: currentCatIndex.value, tab: currentTab.value }
     : null
@@ -9587,12 +9641,13 @@ const resumeAllRemoteSync = () => {
 }
 
 const flushPendingCloudSync = () => {
+  if (!activeSessionUid) return
   flushAppSyncPush()
   pushCareSync().catch(() => {})
 }
 
 const pullAllCloudData = async () => {
-  if (isRemoteApplyLocked()) return
+  if (isRemoteApplyLocked() || !activeSessionUid) return
   await Promise.allSettled([
     pullAppSyncFromServer(),
     pullCareSyncFromServer(true),
@@ -9614,9 +9669,13 @@ const stopAppSyncPoll = () => {
   appSyncPollTimer = null
 }
 
-const onPageShow = () => fetchLatestData({ preserveView: true })
+const onPageShow = () => {
+  if (!authUser.value) return
+  fetchLatestData({ preserveView: true })
+}
 
 const onVisibilityChange = () => {
+  if (!authUser.value) return
   if (document.visibilityState === 'visible') {
     fetchLatestData({ preserveView: true })
   } else {
@@ -9624,27 +9683,36 @@ const onVisibilityChange = () => {
   }
 }
 
-onMounted(async () => {
-  const legacyCareState = normalizeCareMaintenanceState(getStorage(CARE_MAINTENANCE_STORAGE_KEY, null))
-  registerCareSync({
-    getState: () => careMaintenanceState.value,
-    onRemote: applyCareMaintenanceRemoteState,
-    onError: (err) => {
-      console.error('Care sync error:', err)
-      careSyncStatus.value = { ...getCareSyncStatus(), lastError: err?.message || String(err) }
-    },
-    onStatus: (status) => {
-      careSyncStatus.value = { ...status }
-    },
-  })
+const stopUserSession = async () => {
+  if (!activeSessionUid) return
+  flushPendingCloudSync()
+  destroyCareSync()
+  destroyAppSync()
+  if (unsubscribeInventory) {
+    unsubscribeInventory()
+    unsubscribeInventory = null
+  }
+  stopAppSyncPoll()
+  teardownAppSession()
+  resetGlobalRecordsLocal({ keepBranding: false, clearCats: true })
+  inventoryHasAppliedServerSnapshot = false
+  activeSessionUid = null
+  storageUserPrefix = ''
+  setImageUploadUserId(null)
+  showSplash.value = true
+}
 
-  registerAppSyncPayload(getAppSyncPayload)
-  registerAppSyncHandlers({
-    onRemote: applyAppSyncRemotePayload,
-    onError: (err) => {
-      console.error('Cloud sync error:', err)
-    },
-  })
+const startUserSession = async (uid) => {
+  if (!uid || activeSessionUid === uid) return
+  if (activeSessionUid) await stopUserSession()
+
+  activeSessionUid = uid
+  storageUserPrefix = `u_${uid}_`
+  initAppSyncForUser(uid)
+  initCareSyncForUser(uid)
+  setImageUploadUserId(uid)
+
+  const legacyCareState = normalizeCareMaintenanceState(getStorage(CARE_MAINTENANCE_STORAGE_KEY, null))
 
   pauseAppSyncPush(true)
   pauseCareSyncPush(true)
@@ -9657,7 +9725,7 @@ onMounted(async () => {
   pauseCareSyncPush(false)
 
   subscribeCareSync(legacyCareState)
-  try { localStorage.removeItem(CARE_MAINTENANCE_STORAGE_KEY) } catch {}
+  try { localStorage.removeItem(scopedStorageKey(CARE_MAINTENANCE_STORAGE_KEY)) } catch {}
   subscribeToAppSync()
 
   const careBefore = JSON.stringify(careMaintenanceState.value)
@@ -9678,22 +9746,59 @@ onMounted(async () => {
   }
   subscribeToInventory()
   startAppSyncPoll()
+}
+
+const handleLogout = async () => {
+  if (!confirm('確定要登出嗎？')) return
+  closeEditModal()
+  try {
+    await signOutUser()
+  } catch (err) {
+    alert(err?.message || '登出失敗')
+  }
+}
+
+onMounted(() => {
+  registerCareSync({
+    getState: () => careMaintenanceState.value,
+    onRemote: applyCareMaintenanceRemoteState,
+    onError: (err) => {
+      console.error('Care sync error:', err)
+      careSyncStatus.value = { ...getCareSyncStatus(), lastError: err?.message || String(err) }
+    },
+    onStatus: (status) => {
+      careSyncStatus.value = { ...status }
+    },
+  })
+
+  registerAppSyncPayload(getAppSyncPayload)
+  registerAppSyncHandlers({
+    onRemote: applyAppSyncRemotePayload,
+    onError: (err) => {
+      console.error('Cloud sync error:', err)
+    },
+  })
+
   window.addEventListener('visibilitychange', onVisibilityChange)
   window.addEventListener('pageshow', onPageShow)
   window.addEventListener('pagehide', flushPendingCloudSync)
+
+  watchAuthState(async (user) => {
+    authUser.value = user
+    authReady.value = true
+    if (user) {
+      await startUserSession(user.uid)
+    } else {
+      await stopUserSession()
+    }
+  })
 })
+
 onUnmounted(() => {
-  flushPendingCloudSync()
-  destroyCareSync()
-  destroyAppSync()
-  if (unsubscribeInventory) {
-    unsubscribeInventory()
-    unsubscribeInventory = null
-  }
+  void stopUserSession()
   window.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('pageshow', onPageShow)
   window.removeEventListener('pagehide', flushPendingCloudSync)
-  teardownAppSession()
 })
 
 const currentCat = computed(() => {
@@ -9737,9 +9842,11 @@ const migrateLegacyInventoryToFirestore = async () => {
   }
 
   try {
+    const col = getInventoryCollection()
+    if (!col) return
     await Promise.all(
       pending.map(data =>
-        addDoc(collection(db, INVENTORY_COLLECTION), {
+        addDoc(col, {
           ...data,
           updatedAt: serverTimestamp(),
         })
@@ -9754,9 +9861,10 @@ const migrateLegacyInventoryToFirestore = async () => {
 }
 
 const subscribeToInventory = () => {
-  if (unsubscribeInventory) return
+  const col = getInventoryCollection()
+  if (unsubscribeInventory || !col) return
   unsubscribeInventory = onSnapshot(
-    collection(db, INVENTORY_COLLECTION),
+    col,
     (snapshot) => {
       if (isRemoteApplyLocked()) return
       if (snapshot.metadata.fromCache && inventoryHasAppliedServerSnapshot) return

@@ -1,7 +1,8 @@
 import { db } from './firebase'
 import { doc, setDoc, getDocFromServer, onSnapshot, serverTimestamp } from 'firebase/firestore'
 
-const SYNC_DOC = doc(db, 'appData', 'sync')
+let currentUserId = null
+let syncDocRef = null
 
 let getPayload = null
 let onRemoteHandler = null
@@ -15,6 +16,11 @@ let lastPushedFingerprint = ''
 let lastAppliedUpdatedAtMs = 0
 let migrationAttempted = false
 let hasAppliedServerSnapshot = false
+
+const getSyncDoc = () => {
+  if (!syncDocRef) throw new Error('App sync not initialized for user')
+  return syncDocRef
+}
 
 const fingerprint = (payload) => {
   try {
@@ -69,6 +75,14 @@ const applyRemotePayload = (remotePayload, updatedAtMs) => {
   }
 }
 
+export const initAppSyncForUser = (userId) => {
+  if (!userId) throw new Error('userId required')
+  if (currentUserId === userId && syncDocRef) return
+  destroyAppSync()
+  currentUserId = userId
+  syncDocRef = doc(db, 'users', userId, 'app', 'sync')
+}
+
 export const registerAppSyncPayload = (getter) => {
   getPayload = getter
 }
@@ -87,7 +101,7 @@ export const pauseRemoteApply = (paused) => {
 }
 
 export const scheduleAppSyncPush = () => {
-  if (pushPaused || !getPayload) return
+  if (pushPaused || !getPayload || !syncDocRef) return
   clearTimeout(pushTimer)
   pushTimer = setTimeout(() => {
     flushAppSyncPush()
@@ -95,13 +109,13 @@ export const scheduleAppSyncPush = () => {
 }
 
 export const flushAppSyncPush = async ({ force = false } = {}) => {
-  if ((!force && pushPaused) || !getPayload) return false
+  if ((!force && pushPaused) || !getPayload || !syncDocRef) return false
   const payload = clonePayload(getPayload())
   if (!payload) return false
   const fp = fingerprint(payload)
   if (!force && fp === lastPushedFingerprint) return false
   try {
-    await setDoc(SYNC_DOC, {
+    await setDoc(getSyncDoc(), {
       ...payload,
       updatedAt: serverTimestamp(),
     })
@@ -124,9 +138,9 @@ export const markAppSyncLocalAuthoritative = (ms = 4000) => {
 }
 
 export const pullAppSyncFromServer = async () => {
-  if (!onRemoteHandler) return { ok: false, reason: 'not-registered', applied: false }
+  if (!onRemoteHandler || !syncDocRef) return { ok: false, reason: 'not-registered', applied: false }
   try {
-    const snapshot = await getDocFromServer(SYNC_DOC)
+    const snapshot = await getDocFromServer(getSyncDoc())
     if (!snapshot.exists()) {
       return { ok: true, reason: 'empty-doc', applied: false }
     }
@@ -147,9 +161,9 @@ export const pullAppSyncFromServer = async () => {
 }
 
 const migrateLocalPayloadToCloud = async (payload) => {
-  if (migrationAttempted || !payload) return
+  if (migrationAttempted || !payload || !syncDocRef) return
   try {
-    const existing = await getDocFromServer(SYNC_DOC)
+    const existing = await getDocFromServer(getSyncDoc())
     if (existing.exists()) return
   } catch (err) {
     console.error('App sync migration check failed:', err)
@@ -159,7 +173,7 @@ const migrateLocalPayloadToCloud = async (payload) => {
   try {
     const cloned = clonePayload(payload)
     lastPushedFingerprint = fingerprint(cloned)
-    await setDoc(SYNC_DOC, {
+    await setDoc(getSyncDoc(), {
       ...cloned,
       updatedAt: serverTimestamp(),
     })
@@ -171,9 +185,9 @@ const migrateLocalPayloadToCloud = async (payload) => {
 }
 
 export const subscribeToAppSync = () => {
-  if (unsubscribe) return
+  if (unsubscribe || !syncDocRef) return
   unsubscribe = onSnapshot(
-    SYNC_DOC,
+    getSyncDoc(),
     (snapshot) => {
       if (snapshot.metadata.fromCache && hasAppliedServerSnapshot) return
 
@@ -209,4 +223,8 @@ export const destroyAppSync = () => {
   pushTimer = null
   hasAppliedServerSnapshot = false
   lastAppliedUpdatedAtMs = 0
+  lastPushedFingerprint = ''
+  migrationAttempted = false
+  currentUserId = null
+  syncDocRef = null
 }
