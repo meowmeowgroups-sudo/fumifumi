@@ -39,9 +39,8 @@ const switchMode = (next) => {
   <div class="min-h-screen bg-[#f5f5f3] flex items-center justify-center p-4 font-sans antialiased">
     <div class="w-full max-w-sm">
       <div class="text-center mb-8">
-        <div class="text-5xl mb-3">🐱</div>
-        <h1 class="text-xl font-black text-slate-900 tracking-tight">MeowMeowCare</h1>
-        <p class="text-[11px] font-bold text-slate-400 mt-1">貓咪照護紀錄 · 你的專屬雲端戶口</p>
+        <h1 class="auth-brand">FUMI-FUMI</h1>
+        <p class="auth-tagline">貓貓最安心的踏-踏，源自你最細心的照顧</p>
       </div>
 
       <div class="bg-white rounded-3xl shadow-lg shadow-slate-200/60 ring-1 ring-slate-100 p-6 space-y-4">
@@ -105,3 +104,26 @@ const switchMode = (next) => {
     </div>
   </div>
 </template>
+
+<style scoped>
+@import url('https://fonts.cdnfonts.com/css/garet');
+
+.auth-brand {
+  font-family: 'Garet', sans-serif;
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #795E38;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.auth-tagline {
+  margin: 0.75rem 0 0;
+  padding: 0 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.6;
+  color: #9a8268;
+}
+</style>
