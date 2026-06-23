@@ -8,7 +8,7 @@
     <div v-if="showSplash"
          class="fixed inset-0 z-[999] bg-[#f5f5f3] flex flex-col items-center justify-center select-none px-6"
          @click="onSplashTap">
-      <div class="w-full max-w-md aspect-square flex items-center justify-center relative rounded-3xl overflow-hidden bg-white/60 shadow-inner border border-white/80">
+      <div class="w-full max-w-md aspect-square flex items-center justify-center relative rounded-3xl overflow-hidden bg-[#efe8dc] shadow-inner border border-white/80">
         <video v-show="!splashVideoFailed"
                ref="splashVideo"
                :src="splashVideoSrc"
@@ -22,9 +22,9 @@
                @timeupdate="onSplashTimeUpdate"
                class="w-full h-full object-contain pointer-events-none">
         </video>
-        <div v-if="splashVideoFailed" class="flex flex-col items-center justify-center gap-3 p-6 text-center">
-          <span class="text-6xl leading-none">🐱</span>
-          <p class="text-[10px] font-bold text-slate-400">貓貓照護紀錄</p>
+        <div v-if="splashVideoFailed" class="splash-fallback flex flex-col items-center justify-center gap-2 p-6 text-center w-full h-full">
+          <p class="splash-fallback-brand">FUMI-FUMI</p>
+          <p class="splash-fallback-tagline">{{ APP_BRAND_TAGLINE }}</p>
         </div>
       </div>
       <button type="button"
@@ -3275,7 +3275,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import splashVideoSrc from './assets/Brown One Line Pet Sitting Logo 2.mp4'
 import AuthScreen from './components/AuthScreen.vue'
 import { checkForAppUpdate } from './appUpdate'
@@ -3350,25 +3350,36 @@ const enterApp = () => {
   if (!showSplash.value) return
   showSplash.value = false
 }
+
+const initSplashVideo = async () => {
+  if (!showSplash.value || !authUser.value) return
+  splashVideoFailed.value = false
+  await nextTick()
+  const video = splashVideo.value
+  if (!video) return
+  video.muted = true
+  try {
+    video.load()
+    await video.play()
+  } catch {
+    // 自動播放被阻擋時仍顯示影片畫面，等用戶點擊進入
+  }
+}
+
 const onSplashVideoError = () => {
   splashVideoFailed.value = true
-  setTimeout(enterApp, 600)
 }
+
 const onSplashTap = () => enterApp()
+
 const onSplashTimeUpdate = () => {
   const video = splashVideo.value
   if (!video || splashVideoFailed.value || !showSplash.value) return
   if (video.duration > 0 && video.currentTime >= video.duration - 0.15) enterApp()
 }
-onMounted(() => {
-  if (splashVideo.value) {
-    splashVideo.value.muted = true
-    splashVideo.value.play().catch(() => {})
-    if (splashVideo.value.error) onSplashVideoError()
-  }
-  setTimeout(() => {
-    if (!splashVideo.value?.error && splashVideo.value?.readyState === 0) onSplashVideoError()
-  }, 800)
+
+watch([showSplash, authUser], ([splashVisible, user]) => {
+  if (splashVisible && user) void initSplashVideo()
 })
 
 const currentTab = ref('home')
@@ -9593,6 +9604,7 @@ const stopUserSession = async () => {
   activeSessionUid = null
   storageUserPrefix = ''
   setImageUploadUserId(null)
+  splashVideoFailed.value = false
   showSplash.value = true
 }
 
@@ -10505,6 +10517,25 @@ const addNewCat = async () => {
   font-weight: 600;
   line-height: 1.45;
   color: rgba(255, 255, 255, 0.9);
+}
+
+.splash-fallback-brand {
+  font-family: 'Garet', sans-serif;
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #795E38;
+  margin: 0;
+}
+
+.splash-fallback-tagline {
+  margin: 0;
+  padding: 0 0.5rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #9a8268;
+  max-width: 14rem;
 }
 
 /* 貓貓主題色：由 themePageStyle 注入 CSS 變數 */
