@@ -55,12 +55,15 @@
             <p class="app-header-brand">{{ APP_BRAND_NAME }}</p>
             <p class="app-header-tagline">{{ APP_BRAND_TAGLINE }}</p>
           </div>
-          <button type="button"
-                  @click="triggerManualRefresh"
-                  :disabled="appRefreshing"
-                  class="shrink-0 mt-0.5 text-[10px] font-black text-white bg-white/20 hover:bg-white/30 border border-white/30 px-2.5 py-1 rounded-lg transition-colors active:scale-95 disabled:opacity-60">
-            {{ appRefreshing ? '更新中…' : '重新整理' }}
-          </button>
+          <div class="flex flex-col items-end gap-1 shrink-0">
+            <button type="button"
+                    @click="triggerManualRefresh"
+                    :disabled="appRefreshing"
+                    class="mt-0.5 text-[10px] font-black text-white bg-white/20 hover:bg-white/30 border border-white/30 px-2.5 py-1 rounded-lg transition-colors active:scale-95 disabled:opacity-60">
+              {{ appRefreshing ? '更新中…' : '重新整理' }}
+            </button>
+            <p v-if="refreshNotice" class="text-[9px] font-bold text-white/90">{{ refreshNotice }}</p>
+          </div>
         </div>
 
         <div class="relative z-10 flex items-center gap-2 border-t border-white/20 pt-2.5">
@@ -3333,14 +3336,25 @@ const splashVideo = ref(null)
 const splashVideoFailed = ref(false)
 
 const appRefreshing = ref(false)
+const refreshNotice = ref('')
 
 const triggerManualRefresh = async () => {
   if (appRefreshing.value || showSplash.value) return
+  if (!activeSessionUid) {
+    refreshNotice.value = '請先登入'
+    setTimeout(() => { refreshNotice.value = '' }, 2000)
+    return
+  }
   appRefreshing.value = true
+  refreshNotice.value = ''
   try {
     await fetchLatestData({ preserveView: true })
+    refreshNotice.value = '更新成功'
+    setTimeout(() => { refreshNotice.value = '' }, 2000)
   } catch (err) {
     console.error('Manual refresh failed:', err)
+    refreshNotice.value = '更新失敗，請稍後再試'
+    setTimeout(() => { refreshNotice.value = '' }, 2500)
   } finally {
     appRefreshing.value = false
   }
