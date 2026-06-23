@@ -41,30 +41,8 @@
   <div class="min-h-screen font-sans antialiased p-4 pb-4 md:pb-8 md:px-6 lg:px-8 transition-colors duration-500"
        :style="themePageStyle">
 
-    <div v-if="!showSplash && (ptrPull > 0 || ptrRefreshing || ptrShowSuccess)"
-         class="ptr-indicator md:hidden"
-         :class="{ 'ptr-indicator--busy': ptrRefreshing || ptrShowSuccess }"
-         :style="{ opacity: ptrIndicatorOpacity }">
-      <div class="ptr-indicator__pill"
-           :class="{
-             'ptr-indicator__pill--ready': ptrReady && !ptrShowSuccess,
-             'ptr-indicator__pill--loading': ptrRefreshing,
-             'ptr-indicator__pill--success': ptrShowSuccess,
-           }">
-        <span v-if="!ptrShowSuccess" class="ptr-indicator__spinner" :class="{ 'ptr-indicator__spinner--spin': ptrRefreshing || ptrReady }"></span>
-        <span v-else class="ptr-indicator__check">✓</span>
-        <span class="ptr-indicator__text">{{ ptrHintText }}</span>
-      </div>
-    </div>
-
     <div v-if="!showSplash"
-         class="ptr-scroll md:contents min-w-0 max-w-full overflow-x-clip"
-         :class="{ 'ptr-scroll--refreshing': ptrRefreshing }"
-         :style="ptrContentStyle"
-         @touchstart.passive="onPullRefreshStart"
-         @touchmove="onPullRefreshMove"
-         @touchend="onPullRefreshEnd"
-         @touchcancel="onPullRefreshEnd">
+         class="md:contents min-w-0 max-w-full overflow-x-clip">
     
     <header class="max-w-md md:max-w-6xl mx-auto mb-4 rounded-2xl shadow-md overflow-hidden ring-1 ring-white/20 transition-[box-shadow] duration-500">
       <div class="px-3 pt-3 pb-2.5 transition-[background] duration-500 relative overflow-hidden space-y-2.5"
@@ -72,9 +50,17 @@
         <div class="absolute -right-10 -top-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
         <div class="absolute -right-8 -bottom-10 w-28 h-28 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
 
-        <div class="relative z-10 w-full min-w-0 px-0.5 py-0.5">
-          <p class="app-header-brand">{{ APP_BRAND_NAME }}</p>
-          <p class="app-header-tagline">{{ APP_BRAND_TAGLINE }}</p>
+        <div class="relative z-10 flex items-start justify-between gap-2 w-full min-w-0 px-0.5 py-0.5">
+          <div class="min-w-0 flex-1">
+            <p class="app-header-brand">{{ APP_BRAND_NAME }}</p>
+            <p class="app-header-tagline">{{ APP_BRAND_TAGLINE }}</p>
+          </div>
+          <button type="button"
+                  @click="triggerManualRefresh"
+                  :disabled="appRefreshing"
+                  class="shrink-0 mt-0.5 text-[10px] font-black text-white bg-white/20 hover:bg-white/30 border border-white/30 px-2.5 py-1 rounded-lg transition-colors active:scale-95 disabled:opacity-60">
+            {{ appRefreshing ? '更新中…' : '重新整理' }}
+          </button>
         </div>
 
         <div class="relative z-10 flex items-center gap-2 border-t border-white/20 pt-2.5">
@@ -3346,87 +3332,17 @@ const showSplash = ref(true)
 const splashVideo = ref(null)
 const splashVideoFailed = ref(false)
 
-const PTR_THRESHOLD = 70
-const ptrPull = ref(0)
-const ptrRefreshing = ref(false)
-const ptrShowSuccess = ref(false)
-const ptrTracking = ref(false)
-const ptrStartY = ref(0)
+const appRefreshing = ref(false)
 
-const ptrReady = computed(() => ptrPull.value >= PTR_THRESHOLD)
-const ptrHintText = computed(() => {
-  if (ptrShowSuccess.value) return '更新成功'
-  if (ptrRefreshing.value) return '正在更新…'
-  if (ptrReady.value) return '放開以重新整理'
-  return '下拉更新'
-})
-const ptrIndicatorOpacity = computed(() => {
-  if (ptrRefreshing.value || ptrShowSuccess.value) return 1
-  return Math.min(1, ptrPull.value / PTR_THRESHOLD)
-})
-const ptrContentStyle = computed(() => {
-  if (ptrRefreshing.value || ptrShowSuccess.value) return {}
-  if (ptrPull.value > 0) return { transform: `translateY(${Math.min(ptrPull.value * 0.42, 52)}px)` }
-  return {}
-})
-
-const isPullRefreshBlocked = () => {
-  if (showSplash.value || ptrRefreshing.value) return true
-  if (isAppModalOpen.value) return true
-  if (showHeaderSettingsMenu.value || careMaintenanceCustomModalOpen.value) return true
-  return false
-}
-
-const onPullRefreshStart = (e) => {
-  if (isPullRefreshBlocked()) return
-  if (window.scrollY > 8) return
-  ptrStartY.value = e.touches[0]?.clientY ?? 0
-  ptrTracking.value = true
-}
-
-const onPullRefreshMove = (e) => {
-  if (!ptrTracking.value || ptrRefreshing.value || isPullRefreshBlocked()) return
-  if (window.scrollY > 8) {
-    ptrTracking.value = false
-    ptrPull.value = 0
-    return
-  }
-  const dy = (e.touches[0]?.clientY ?? 0) - ptrStartY.value
-  if (dy <= 0) {
-    ptrPull.value = 0
-    return
-  }
-  e.preventDefault()
-  ptrPull.value = Math.min(dy * 0.55, 108)
-}
-
-const onPullRefreshEnd = () => {
-  if (!ptrTracking.value || ptrRefreshing.value) return
-  ptrTracking.value = false
-  if (ptrPull.value >= PTR_THRESHOLD) {
-    triggerPullRefresh()
-    return
-  }
-  ptrPull.value = 0
-}
-
-const triggerPullRefresh = async () => {
-  if (ptrRefreshing.value) return
-  ptrRefreshing.value = true
-  ptrShowSuccess.value = false
-  ptrPull.value = PTR_THRESHOLD
+const triggerManualRefresh = async () => {
+  if (appRefreshing.value || showSplash.value) return
+  appRefreshing.value = true
   try {
     await fetchLatestData({ preserveView: true })
-    ptrRefreshing.value = false
-    ptrPull.value = 0
-    ptrShowSuccess.value = true
-    setTimeout(() => {
-      ptrShowSuccess.value = false
-    }, 1400)
   } catch (err) {
-    console.error('Pull refresh failed:', err)
-    ptrRefreshing.value = false
-    ptrPull.value = 0
+    console.error('Manual refresh failed:', err)
+  } finally {
+    appRefreshing.value = false
   }
 }
 
@@ -11036,91 +10952,6 @@ const addNewCat = async () => {
 }
 .weight-track-zone-over {
   background: linear-gradient(90deg, #fde68a 0%, #fcd34d 100%);
-}
-
-/* Pull-to-refresh（手機） */
-.ptr-indicator {
-  position: fixed;
-  inset: 0;
-  z-index: 180;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  transition: opacity 0.2s ease, background 0.25s ease;
-}
-.ptr-indicator--busy {
-  background: rgba(248, 250, 252, 0.62);
-  backdrop-filter: blur(3px);
-}
-.ptr-indicator__pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 18px;
-  border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.12);
-  backdrop-filter: blur(10px);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
-}
-.ptr-indicator__pill--ready {
-  border-color: color-mix(in srgb, var(--theme-primary, #64748b) 45%, #cbd5e1);
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--theme-primary, #64748b) 16%, transparent);
-}
-.ptr-indicator__pill--loading {
-  border-color: color-mix(in srgb, var(--theme-primary, #64748b) 55%, #cbd5e1);
-  padding: 12px 22px;
-  transform: scale(1.02);
-}
-.ptr-indicator__pill--success {
-  border-color: #86efac;
-  background: rgba(240, 253, 244, 0.98);
-  padding: 12px 22px;
-  box-shadow: 0 8px 28px rgba(22, 163, 74, 0.15);
-}
-.ptr-indicator__check {
-  width: 20px;
-  height: 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  font-weight: 900;
-  color: #16a34a;
-  flex-shrink: 0;
-}
-.ptr-indicator__spinner {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 2.5px solid #e2e8f0;
-  border-top-color: var(--theme-primary, #64748b);
-  flex-shrink: 0;
-  transition: transform 0.2s ease;
-}
-.ptr-indicator__spinner--spin {
-  animation: ptr-spin 0.65s linear infinite;
-}
-.ptr-indicator__text {
-  font-size: 11px;
-  font-weight: 800;
-  color: #475569;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-}
-.ptr-scroll {
-  transition: transform 0.22s ease;
-  will-change: transform;
-  max-width: 100%;
-  overflow-x: clip;
-}
-.ptr-scroll--refreshing {
-  transition: transform 0.28s ease;
-}
-@keyframes ptr-spin {
-  to { transform: rotate(360deg); }
 }
 
 /* 日期/時間並排：Flex 50/50 + iOS 原生欄位防溢出 */
