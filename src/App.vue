@@ -4,6 +4,19 @@
   </div>
   <AuthScreen v-else-if="!authUser" />
   <template v-else>
+  <button v-if="!showSplash"
+          type="button"
+          @click="triggerManualRefresh"
+          :disabled="appRefreshing"
+          class="app-refresh-btn"
+          :style="{ top: 'max(0.5rem, env(safe-area-inset-top))' }">
+    {{ appRefreshing ? '更新中…' : '重新整理' }}
+  </button>
+  <p v-if="!showSplash && refreshNotice"
+     class="app-refresh-notice"
+     :style="{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 2rem)' }">
+    {{ refreshNotice }}
+  </p>
   <Transition name="fade-splash">
     <div v-if="showSplash"
          class="fixed inset-0 z-[999] bg-[#f5f5f3] flex flex-col items-center justify-center select-none px-6"
@@ -50,20 +63,9 @@
         <div class="absolute -right-10 -top-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
         <div class="absolute -right-8 -bottom-10 w-28 h-28 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
 
-        <div class="relative z-10 flex items-start justify-between gap-2 w-full min-w-0 px-0.5 py-0.5">
-          <div class="min-w-0 flex-1">
-            <p class="app-header-brand">{{ APP_BRAND_NAME }}</p>
-            <p class="app-header-tagline">{{ APP_BRAND_TAGLINE }}</p>
-          </div>
-          <div class="flex flex-col items-end gap-1 shrink-0">
-            <button type="button"
-                    @click="triggerManualRefresh"
-                    :disabled="appRefreshing"
-                    class="mt-0.5 text-[10px] font-black text-white bg-white/20 hover:bg-white/30 border border-white/30 px-2.5 py-1 rounded-lg transition-colors active:scale-95 disabled:opacity-60">
-              {{ appRefreshing ? '更新中…' : '重新整理' }}
-            </button>
-            <p v-if="refreshNotice" class="text-[9px] font-bold text-white/90">{{ refreshNotice }}</p>
-          </div>
+        <div class="relative z-10 w-full min-w-0 px-0.5 py-0.5">
+          <p class="app-header-brand">{{ APP_BRAND_NAME }}</p>
+          <p class="app-header-tagline">{{ APP_BRAND_TAGLINE }}</p>
         </div>
 
         <div class="relative z-10 flex items-center gap-2 border-t border-white/20 pt-2.5">
@@ -10531,6 +10533,44 @@ const addNewCat = async () => {
   font-weight: 600;
   line-height: 1.45;
   color: rgba(255, 255, 255, 0.9);
+}
+
+.app-refresh-btn {
+  position: fixed;
+  right: 0.75rem;
+  z-index: 500;
+  font-size: 10px;
+  font-weight: 800;
+  color: #795e38;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(121, 94, 56, 0.25);
+  padding: 0.35rem 0.65rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.app-refresh-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.app-refresh-btn:disabled {
+  opacity: 0.65;
+}
+
+.app-refresh-notice {
+  position: fixed;
+  right: 0.75rem;
+  z-index: 500;
+  margin: 0;
+  font-size: 9px;
+  font-weight: 700;
+  color: #795e38;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(121, 94, 56, 0.2);
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.4rem;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 
 .splash-fallback-brand {
